@@ -4,19 +4,14 @@ on:
   push:
     branches: [ main, dev ]
   workflow_dispatch:
-    inputs:
-      logLevel:
-        description: 'Reason for manual run'
-        required: false
-        default: 'Manual build'
 
 jobs:
   build:
-    name: Build aapt2 ${{ matrix.target_arch }}
+    name: aapt2 ${{ matrix.target_arch }}
     runs-on: ubuntu-latest
     permissions:
-      id-token: write          # needed for OIDC
-      attestations: write      # needed for provenance attestation
+      id-token: write
+      attestations: write
       contents: read
 
     strategy:
@@ -25,58 +20,62 @@ jobs:
       fail-fast: false
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup Android NDK r23c
+      - name: Install NDK r25b (recommended in 2025)
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r23c
+          ndk-version: r25b           # r23c is very old and buggy on runners
           add-to-path: false
 
-      - name: Configure toolchain and environment
+      - name: Set up toolchain for ${{ matrix.target_arch }}
         run: |
-          NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
-          TOOLCHAIN_PATH="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64"
+          NDK="$HOME/android-ndk-r25b"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
 
           case ${{ matrix.target_arch }} in
             x86_64)
-              CLANG_TRIPLE=x86_64-linux-android21
-              MIN_API=21
+              TRIPLE=x86_64-linux-android21
+              API=21
               ;;
             i686)
-              CLANG_TRIPLE=i686-linux-android16
-              MIN_API=16
+              TRIPLE=i686-linux-android16
+              API=16
               ;;
             aarch64)
-              CLANG_TRIPLE=aarch64-linux-android21
-              MIN_API=21
+              TRIPLE=aarch64-linux-android21
+              API=21
               ;;
             armv7a)
-              CLANG_TRIPLE=armv7a-linux-androideabi16
-              MIN_API=16
+              TRIPLE=armv7a-linux-androideabi16
+              API=16
               ;;
           esac
 
-          echo "CC=\( TOOLCHAIN_PATH/bin/ \){CLANG_TRIPLE}-clang" >> $GITHUB_ENV
-          echo "CXX=\( TOOLCHAIN_PATH/bin/ \){CLANG_TRIPLE}-clang++" >> $GITHUB_ENV
-          echo "NDK_TOOLCHAIN=$TOOLCHAIN_PATH" >> $GITHUB_ENV
-          echo "ANDROID_PAGE_SIZE=16384" >> $GITHUB_ENV
-          echo "TARGET_ARCH=${{ matrix.target_arch }}" >> $GITHUB_ENV
+          echo "CC=$TOOLCHAIN/bin/${TRIPLE}-clang" >> $GITHUB_ENV
+          echo "CXX=$TOOLCHAIN/bin/${TRIPLE}-clang++" >> $GITHUB_ENV
+          echo "NDK_TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+          echo "ANDROID_API=$API" >> $GITHUB_ENV
+          echo "TARGET_TRIPLE=$TRIPLE" >> $GITHUB_ENV
 
-          # Debug output
-          echo "Target: ${{ matrix.target_arch }} → $CLANG_TRIPLE (API $MIN_API)"
+          # Critical for CMake/autotools
+          echo "CMAKE_SYSROOT=$NDK/platforms/android-$API/arch-${{ matrix.target_arch }}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$NDK/platforms/android-$API/arch-${{ matrix.target_arch }}/usr/lib/pkgconfig" >> $GITHUB_ENV
+
+          echo "Building for ${{ matrix.target_arch }} → $TRIPLE (API $API)"
 
       - name: Build aapt2
         run: |
-          echo "Building aapt2 for ${{ matrix.target_arch }}..."
           mkdir -p dist/${{ matrix.target_arch }}
-          ./build.sh \( {{ matrix.target_arch }} dist/ \){{ matrix.target_arch }}
 
-      - name: Attest build provenance
+          # Your build.sh will now see correct CC, CXX, NDK_TOOLCHAIN and API level
+          ./build.sh ${{ matrix.target_arch }} dist/${{ matrix.target_arch }}
+
+      - name: Attest provenance
         uses: actions/attest-build-provenance@v1
         with:
           subject-path: dist/${{ matrix.target_arch }}/*
