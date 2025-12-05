@@ -11,25 +11,29 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, i686, aarch64, armv7a]
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install host tools
         run: sudo apt-get update && sudo apt-get install -y ninja-build autoconf automake libtool pkg-config
 
       - name: Setup NDK r27
         uses: nttld/setup-ndk@v1
+        id: ndk
         with:
           ndk-version: r27
 
-      - name: Export NDK_TOOLCHAIN
+      - name: Set NDK_TOOLCHAIN (full correct path)
         run: |
           echo "NDK_TOOLCHAIN=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
 
-      - name: Build ${{ matrix.arch }}
-        run: bash ./build.sh ${{ matrix.arch }}
+      - name: Build aapt2 ${{ matrix.arch }}
+        run: |
+          chmod +x ./build.sh
+          ./build.sh ${{ matrix.arch }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
