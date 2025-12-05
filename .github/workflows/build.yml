@@ -17,7 +17,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install host tools
+      - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y ninja-build autoconf automake libtool pkg-config
 
       - name: Setup NDK r27
@@ -26,9 +26,11 @@ jobs:
         with:
           ndk-version: r27
 
-      - name: Set NDK_TOOLCHAIN (full correct path)
+      - name: Export toolchain paths
         run: |
-          echo "NDK_TOOLCHAIN=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
+          TOOLCHAIN="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "NDK_TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+          echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
 
       - name: Build aapt2 ${{ matrix.arch }}
         run: |
