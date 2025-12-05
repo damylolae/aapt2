@@ -1,4 +1,4 @@
-name: Build AAPT2
+name: New Build AAPT2
 
 on:
   workflow_dispatch:
@@ -18,14 +18,22 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential ninja-build zip unzip \
-             libstdc++-10-dev autoconf automake libtool pkg-config cmake
+            libstdc++-10-dev autoconf automake libtool pkg-config cmake wget unzip
 
-      - name: Build AAPT2 New
+      - name: Download and setup Android NDK
+        run: |
+          NDK_VERSION=25.2.9519653
+          wget https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip
+          unzip android-ndk-$NDK_VERSION-linux.zip
+          echo "NDK_TOOLCHAIN=$PWD/android-ndk-$NDK_VERSION" >> $GITHUB_ENV
+          export NDK_TOOLCHAIN=$PWD/android-ndk-$NDK_VERSION
+
+      - name: Build AAPT2
         run: |
           chmod +x build.sh
           ./build.sh --target=${{ matrix.arch }}
 
-      - name: Upload result
+      - name: Upload built AAPT2 binary
         uses: actions/upload-artifact@v4
         with:
           name: aapt2-${{ matrix.arch }}
