@@ -8,35 +8,41 @@ on:
   workflow_dispatch:
     inputs:
       logLevel:
-        description: 'Reason'     
+        description: 'Reason'
         required: false
         default: 'Update package'
 
 jobs:
   build:
-    name: build
+    name: Build aapt2
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       attestations: write
     strategy:
       matrix:
-        target_arch: [x86_64, x86, arm64-v8a, armeabi-v7a]
+        target_arch: [x86_64, i686, aarch64, armv7a]
       fail-fast: false
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v3
         with:
-          submodules: 'true'
+          submodules: true
 
-      - uses: nttld/setup-ndk@v1
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
           ndk-version: r23c
-          add-to-path: false
-      - run: ./build.sh ${{ matrix.target_arch }}
+          add-to-path: true  # Add NDK to PATH
+
+      - name: Build for ${{ matrix.target_arch }}
+        run: |
+          echo "Building aapt2 for ${{ matrix.target_arch }}"
+          ./build.sh ${{ matrix.target_arch }}
         env:
-          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64
+          # Optional: you can still set NDK_TOOLCHAIN if your script uses it
+          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk_path }}/toolchains/llvm/prebuilt/linux-x86_64
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
