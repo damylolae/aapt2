@@ -34,15 +34,37 @@ jobs:
         id: setup-ndk
         with:
           ndk-version: r23c
-          add-to-path: true  # Add NDK to PATH
+          add-to-path: true
 
-      - name: Build for ${{ matrix.target_arch }}
+      - name: Set compiler and page size
+        run: |
+          export ANDROID_PAGE_SIZE=16384
+          case ${{ matrix.target_arch }} in
+            x86_64)
+              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang
+              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang++
+              ;;
+            i686)
+              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang
+              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang++
+              ;;
+            aarch64)
+              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang
+              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang++
+              ;;
+            armv7a)
+              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang
+              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang++
+              ;;
+          esac
+          echo "CC=$CC"
+          echo "CXX=$CXX"
+          echo "ANDROID_PAGE_SIZE=$ANDROID_PAGE_SIZE"
+
+      - name: Build aapt2
         run: |
           echo "Building aapt2 for ${{ matrix.target_arch }}"
           ./build.sh ${{ matrix.target_arch }}
-        env:
-          # Optional: you can still set NDK_TOOLCHAIN if your script uses it
-          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk_path }}/toolchains/llvm/prebuilt/linux-x86_64
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
@@ -51,7 +73,7 @@ jobs:
           subject-path: dist
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: dist-${{ matrix.target_arch }}
           path: dist
