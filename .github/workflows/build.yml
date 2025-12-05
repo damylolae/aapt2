@@ -2,88 +2,88 @@ name: Build aapt2
 
 on:
   push:
-    branches:
-      - main
-      - dev
+    branches: [ main, dev ]
   workflow_dispatch:
     inputs:
       logLevel:
-        description: 'Reason'
+        description: 'Reason for manual run'
         required: false
-        default: 'Update package'
+        default: 'Manual build'
 
 jobs:
   build:
-    name: Build aapt2
+    name: Build aapt2 ${{ matrix.target_arch }}
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      attestations: write
+      id-token: write          # needed for OIDC
+      attestations: write      # needed for provenance attestation
+      contents: read
+
     strategy:
       matrix:
         target_arch: [x86_64, i686, aarch64, armv7a]
       fail-fast: false
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          submodules: true
 
-      - name: Setup NDK
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Android NDK r23c
         uses: nttld/setup-ndk@v1
-        id: setup-ndk
+        id: ndk
         with:
           ndk-version: r23c
-          add-to-path: true
+          add-to-path: false
 
-      - name: Set compiler, NDK_TOOLCHAIN, and page size
+      - name: Configure toolchain and environment
         run: |
-          export ANDROID_PAGE_SIZE=16384
-          NDK_PATH=${{ steps.setup-ndk.outputs.ndk-path }}
+          NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
+          TOOLCHAIN_PATH="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64"
+
           case ${{ matrix.target_arch }} in
             x86_64)
-              export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang
-              export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang++
-              export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+              CLANG_TRIPLE=x86_64-linux-android21
+              MIN_API=21
               ;;
             i686)
-              export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang
-              export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang++
-              export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+              CLANG_TRIPLE=i686-linux-android16
+              MIN_API=16
               ;;
             aarch64)
-              export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang
-              export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang++
-              export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+              CLANG_TRIPLE=aarch64-linux-android21
+              MIN_API=21
               ;;
             armv7a)
-              export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang
-              export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang++
-              export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+              CLANG_TRIPLE=armv7a-linux-androideabi16
+              MIN_API=16
               ;;
           esac
-          echo "CC=$CC"
-          echo "CXX=$CXX"
-          echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN"
-          echo "ANDROID_PAGE_SIZE=$ANDROID_PAGE_SIZE"
+
+          echo "CC=\( TOOLCHAIN_PATH/bin/ \){CLANG_TRIPLE}-clang" >> $GITHUB_ENV
+          echo "CXX=\( TOOLCHAIN_PATH/bin/ \){CLANG_TRIPLE}-clang++" >> $GITHUB_ENV
+          echo "NDK_TOOLCHAIN=$TOOLCHAIN_PATH" >> $GITHUB_ENV
+          echo "ANDROID_PAGE_SIZE=16384" >> $GITHUB_ENV
+          echo "TARGET_ARCH=${{ matrix.target_arch }}" >> $GITHUB_ENV
+
+          # Debug output
+          echo "Target: ${{ matrix.target_arch }} → $CLANG_TRIPLE (API $MIN_API)"
 
       - name: Build aapt2
         run: |
-          echo "Building aapt2 for ${{ matrix.target_arch }}"
+          echo "Building aapt2 for ${{ matrix.target_arch }}..."
           mkdir -p dist/${{ matrix.target_arch }}
-          ./build.sh ${{ matrix.target_arch }} dist/${{ matrix.target_arch }}
-          env:
-          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64
-          
+          ./build.sh \( {{ matrix.target_arch }} dist/ \){{ matrix.target_arch }}
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
         with:
-          subject-name: dist-${{ matrix.target_arch }}
-          subject-path: dist/${{ matrix.target_arch }}
+          subject-path: dist/${{ matrix.target_arch }}/*
 
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.target_arch }}
-          path: dist/${{ matrix.target_arch }}
+          name: aapt2-${{ matrix.target_arch }}
+          path: dist/${{ matrix.target_arch }}/*
+          if-no-files-found: error
