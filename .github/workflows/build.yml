@@ -1,51 +1,32 @@
-name: Build aapt2
+name: Build AAPT2
 
 on:
-  push:
-    branches:
-      - main
-      - dev
   workflow_dispatch:
-    inputs:
-      logLevel:
-        description: 'Reason'     
-        required: false
-        default: 'Update package'
 
 jobs:
   build:
-    name: build
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      attestations: write
     strategy:
       matrix:
-        target_arch: [x86_64, x86, arm64-v8a, armeabi-v7a]
-      fail-fast: false
+        arch: [arm64-v8a, armeabi-v7a, x86, x86_64]
+
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v3
-        with:
-          submodules: 'true'
 
-      - uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r23c
-          add-to-path: false
-      - run: ./build.sh ${{ matrix.target_arch }}
-        env:
-          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential ninja-build zip unzip \
+             libstdc++-10-dev autoconf automake libtool pkg-config cmake
 
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: dist-${{ matrix.target_arch }}
-          subject-path: dist
+      - name: Build AAPT2 New
+        run: |
+          chmod +x build.sh
+          ./build.sh --target=${{ matrix.arch }}
 
-      - name: Upload artifacts
+      - name: Upload result
         uses: actions/upload-artifact@v3
         with:
-          name: dist-${{ matrix.target_arch }}
-          path: dist
+          name: aapt2-${{ matrix.arch }}
+          path: out/*aapt2*
