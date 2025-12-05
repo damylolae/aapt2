@@ -1,1 +1,89 @@
 
+name: Build aapt2
+
+on:
+  push:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: aapt2 ${{ matrix.target_arch }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+
+    strategy:
+      matrix:
+        target_arch: [x86_64, i686, aarch64, armv7a]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install NDK r25b (recommended in 2025)
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r25b           # r23c is very old and buggy on runners
+          add-to-path: false
+
+      - name: Set up toolchain for ${{ matrix.target_arch }}
+        run: |
+          NDK="$HOME/android-ndk-r25b"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+
+          case ${{ matrix.target_arch }} in
+            x86_64)
+              TRIPLE=x86_64-linux-android21
+              API=21
+              ;;
+            i686)
+              TRIPLE=i686-linux-android16
+              API=16
+              ;;
+            aarch64)
+              TRIPLE=aarch64-linux-android21
+              API=21
+              ;;
+            armv7a)
+              TRIPLE=armv7a-linux-androideabi16
+              API=16
+              ;;
+          esac
+
+          echo "CC=$TOOLCHAIN/bin/${TRIPLE}-clang" >> $GITHUB_ENV
+          echo "CXX=$TOOLCHAIN/bin/${TRIPLE}-clang++" >> $GITHUB_ENV
+          echo "NDK_TOOLCHAIN=$TOOLCHAIN" >> $GITHUB_ENV
+          echo "ANDROID_API=$API" >> $GITHUB_ENV
+          echo "TARGET_TRIPLE=$TRIPLE" >> $GITHUB_ENV
+
+          # Critical for CMake/autotools
+          echo "CMAKE_SYSROOT=$NDK/platforms/android-$API/arch-${{ matrix.target_arch }}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$NDK/platforms/android-$API/arch-${{ matrix.target_arch }}/usr/lib/pkgconfig" >> $GITHUB_ENV
+
+          echo "Building for ${{ matrix.target_arch }} → $TRIPLE (API $API)"
+
+      - name: Build aapt2
+        run: |
+          mkdir -p dist/${{ matrix.target_arch }}
+
+          # Your build.sh will now see correct CC, CXX, NDK_TOOLCHAIN and API level
+          ./build.sh ${{ matrix.target_arch }} dist/${{ matrix.target_arch }}
+
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/${{ matrix.target_arch }}/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aapt2-${{ matrix.target_arch }}
+          path: dist/${{ matrix.target_arch }}/*
+          if-no-files-found: error
