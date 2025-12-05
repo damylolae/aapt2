@@ -37,35 +37,36 @@ jobs:
           add-to-path: true
 
       - name: Set compiler, NDK_TOOLCHAIN, and page size
-        run: |
-          export ANDROID_PAGE_SIZE=16384
-          case ${{ matrix.target_arch }} in
-            x86_64)
-              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang
-              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang++
-              export NDK_TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-              ;;
-            i686)
-              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang
-              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang++
-              export NDK_TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-              ;;
-            aarch64)
-              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang
-              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang++
-              export NDK_TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-              ;;
-            armv7a)
-              export CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang
-              export CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang++
-              export NDK_TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-              ;;
-          esac
-          echo "CC=$CC"
-          echo "CXX=$CXX"
-          echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN"
-          echo "ANDROID_PAGE_SIZE=$ANDROID_PAGE_SIZE"
-
+  run: |
+    export ANDROID_PAGE_SIZE=16384
+    NDK_PATH=${{ steps.setup-ndk.outputs.ndk-path }}
+    case ${{ matrix.target_arch }} in
+      x86_64)
+        export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang
+        export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android16-clang++
+        export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+        ;;
+      i686)
+        export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang
+        export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android16-clang++
+        export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+        ;;
+      aarch64)
+        export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang
+        export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android16-clang++
+        export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+        ;;
+      armv7a)
+        export CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang
+        export CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi16-clang++
+        export NDK_TOOLCHAIN=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+        ;;
+    esac
+    echo "CC=$CC"
+    echo "CXX=$CXX"
+    echo "NDK_TOOLCHAIN=$NDK_TOOLCHAIN"
+    echo "ANDROID_PAGE_SIZE=$ANDROID_PAGE_SIZE"
+    
       - name: Build aapt2
         run: |
           echo "Building aapt2 for ${{ matrix.target_arch }}"
