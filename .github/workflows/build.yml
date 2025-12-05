@@ -1,39 +1,57 @@
-name: Build AAPT2
+name: Build aapt2
 
 on:
+  push:
+    branches:
+      - main
+      - dev
   workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Reason'
+        required: false
+        default: 'Update package'
 
 jobs:
   build:
+    name: Build aapt2
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
     strategy:
       matrix:
-        arch: [arm64-v8a, armeabi-v7a, x86, x86_64]
-
+        target_arch: [x86_64, i686, aarch64, armv7a]
+      fail-fast: false
     steps:
-      - name: Checkout source
+      - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential ninja-build zip unzip \
-            libstdc++-10-dev autoconf automake libtool pkg-config cmake wget
-
-      - name: Download and setup Android NDK
-        run: |
-          NDK_VERSION=r27d
-          wget https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
-          unzip android-ndk-${NDK_VERSION}-linux.zip
-          echo "NDK_TOOLCHAIN=$PWD/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
-
-      - name: Build AAPT2
-        run: |
-          chmod +x build.sh
-          ./build.sh --target=${{ matrix.arch }}
-
-      - name: Upload built binaries
-        uses: actions/upload-artifact@v4
         with:
-          name: aapt2-${{ matrix.arch }}
-          path: out/*aapt2*
+          submodules: true
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r23c
+          add-to-path: true  # Add NDK to PATH
+
+      - name: Build for ${{ matrix.target_arch }}
+        run: |
+          echo "Building aapt2 for ${{ matrix.target_arch }}"
+          ./build.sh ${{ matrix.target_arch }}
+        env:
+          # Optional: you can still set NDK_TOOLCHAIN if your script uses it
+          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk_path }}/toolchains/llvm/prebuilt/linux-x86_64
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: dist-${{ matrix.target_arch }}
+          subject-path: dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist-${{ matrix.target_arch }}
+          path: dist
