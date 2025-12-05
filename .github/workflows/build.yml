@@ -72,6 +72,9 @@ jobs:
           echo "Building aapt2 for ${{ matrix.target_arch }}"
           mkdir -p dist/${{ matrix.target_arch }}
           ./build.sh ${{ matrix.target_arch }} dist/${{ matrix.target_arch }}
+          env:
+          NDK_TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64
+          
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
