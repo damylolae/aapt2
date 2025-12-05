@@ -2,7 +2,7 @@ name: Build aapt2
 
 on:
   push:
-    branches: [ main dev ]
+    branches: [ main, dev ]
   workflow_dispatch:
 
 jobs:
@@ -11,36 +11,28 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, i686, aarch64, armv7a]
-      fail-fast: false
-
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build autoconf libtool pkg-config
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build autoconf automake libtool pkg-config
 
       - name: Setup NDK r27
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27
 
-      - name: Set up toolchain
+      - name: Export NDK_TOOLCHAIN
         run: |
           echo "NDK_TOOLCHAIN=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
 
-      - name: Build aapt2 ${{ matrix.arch }}
-        run: |
-          ./build.sh ${{ matrix.arch }}
+      - name: Build ${{ matrix.arch }}
+        run: bash ./build.sh ${{ matrix.arch }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: aapt2-${{ matrix.arch }}
           path: dist/${{ matrix.arch }}/aapt2
-
-      - name: Attest provenance
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: dist/${{ matrix.arch }}/aapt2
