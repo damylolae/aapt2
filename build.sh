@@ -1,101 +1,69 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Check for NDK_TOOLCHAIN environment variable and abort if it is not set.
-if [[ -z "${NDK_TOOLCHAIN}" ]]; then
-    echo "Please specify the Android NDK environment variable \"NDK_TOOLCHAIN\"."
+# === Safety check ===
+if [[ -z "${NDK_TOOLCHAIN:-}" ]]; then
+    echo "Error: NDK_TOOLCHAIN is not set."
     exit 1
 fi
 
-# Prerequisites.
-sudo apt install \
-golang \
-ninja-build \
-autogen \
-autoconf \
-libtool \
-build-essential \
--y || exit 1
+ARCH="${1:-}"
+if [[ -z "$ARCH" ]]; then
+    echo "Usage: $0 <x86_64|i686|aarch64|armv7a>"
+    exit 1
+fi
 
-root="$(pwd)"
+# Map your matrix names to Android ABI and correct triple
+case "$ARCH" in
+    x86_64)   ANDROID_ABI="x86_64"     TRIPLE="x86_64-linux-android21"     MIN_API=21 ;;
+    i686)     ANDROID_ABI="x86"        TRIPLE="i686-linux-android16"       MIN_API=16 ;;
+    aarch64)  ANDROID_ABI="arm64-v8a"  TRIPLE="aarch64-linux-android21"    MIN_API=21 ;;
+    armv7a)   ANDROID_ABI="armeabi-v7a" TRIPLE="armv7a-linux-androideabi16" MIN_API=16 ;;
+    *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+esac
 
-# Install protobuf compiler.
-cd "src/protobuf" || exit 1
-./autogen.sh
-./configure
-make -j"$(nproc)"
-sudo make install
-sudo ldconfig
+ROOT="\( (cd " \)(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIST="$ROOT/dist/$ARCH"
+BUILD="$ROOT/build_cmake"
+mkdir -p "$BUILD" "$DIST"
+cd "$BUILD"
 
-# Go back.
-cd "$root" || exit 1
+echo "Building aapt2 for $ARCH ($TRIPLE, API $MIN_API)"
 
-# Apply patches.
-git apply patches/incremental_delivery.patch --whitespace=fix
-git apply patches/libpng.patch --whitespace=fix
-git apply patches/selinux.patch  --whitespace=fix
-git apply patches/protobuf.patch --whitespace=fix
-git apply patches/aapt2.patch --whitespace=fix
-git apply patches/androidfw.patch --whitespace=fix
-git apply patches/boringssl.patch --whitespace=fix
+# Build and install protobuf from source (host)
+if [[ ! -x /usr/local/bin/protoc ]]; then
+    echo "Building host protobuf..."
+    cd "$ROOT/src/protobuf"
+    ./autogen.sh
+    ./configure --quiet
+    make "-j$(nproc)"
+    sudo make install
+    sudo ldconfig
+    cd "$BUILD"
+fi
 
-# Define all the compilers, libraries and targets.
-api="30"
-architecture=$1
-declare -A compilers=(
-    [x86_64]=x86_64-linux-android
-    [x86]=i686-linux-android
-    [arm64-v8a]=aarch64-linux-android
-    [armeabi-v7a]=armv7a-linux-androideabi
-)
-declare -A lib_arch=(
-    [x86_64]=x86_64-linux-android
-    [x86]=i686-linux-android
-    [arm64-v8a]=aarch64-linux-android
-    [armeabi-v7a]=arm-linux-androideabi
-)
-declare -A target_abi=(
-    [x86_64]=x86_64
-    [x86]=x86
-    [arm64-v8a]=aarch64
-    [armeabi-v7a]=arm
-)
+# Apply patches
+cd "$ROOT"
+git apply patches/*.patch --whitespace=fix
 
-build_directory="build"
-aapt_binary_path="$root/$build_directory/cmake/aapt2"
-# Build all the target architectures.
-bin_directory="$root/dist/$architecture"
+# CMake configuration – modern and correct
+cmake -S "$ROOT" -B . -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="\( NDK_TOOLCHAIN/bin/ \){TRIPLE}-clang" \
+    -DCMAKE_CXX_COMPILER="\( NDK_TOOLCHAIN/bin/ \){TRIPLE}-clang++" \
+    -DCMAKE_SYSROOT="$NDK_TOOLCHAIN/sysroot" \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DANDROID_ABI="$ANDROID_ABI" \
+    -DTARGET_ABI="$ARCH" \
+    -DPROTOC_PATH=/usr/local/bin/protoc \
+    -DCMAKE_VERBOSE_MAKEFILE=OFF
 
-# switch to cmake build directory.
-[[ -d dir ]] || mkdir -p $build_directory && cd $build_directory || exit 1
+ninja -j"$(nproc)"
 
-# Define the compiler architecture and compiler.
-compiler_arch="${compilers[$architecture]}"
-c_compiler="$compiler_arch$api-clang"
-cxx_compiler="${c_compiler}++"
-
-# Copy libc.a to libpthread.a.
-lib_path="$NDK_TOOLCHAIN/sysroot/usr/lib/${lib_arch[$architecture]}/$api/"
-cp -n "$lib_path/libc.a"  "$lib_path/libpthread.a"
-
-# Run make for the target architecture.
-compiler_bin_directory="$NDK_TOOLCHAIN/bin/"
-cmake -GNinja \
--DCMAKE_C_COMPILER="$compiler_bin_directory$c_compiler" \
--DCMAKE_CXX_COMPILER="$compiler_bin_directory$cxx_compiler" \
--DCMAKE_BUILD_WITH_INSTALL_RPATH=True \
--DCMAKE_BUILD_TYPE=Release \
--DANDROID_ABI="$architecture" \
--DTARGET_ABI="${target_abi[$architecture]}" \
--DPROTOC_PATH="/usr/local/bin/protoc" \
--DCMAKE_SYSROOT="$NDK_TOOLCHAIN/sysroot" \
-.. || exit 1
-
-ninja || exit 1
-
-"$NDK_TOOLCHAIN/bin/llvm-strip" --strip-unneeded  "$aapt_binary_path"
-
-# Create bin directory.
-mkdir -p "$bin_directory"
-
-# Move aapt2 to bin directory.
-mv "$aapt_binary_path" "$bin_directory"
+# Strip and deploy
+"$NDK_TOOLCHAIN/bin/llvm-strip" --strip-unneeded aapt2
+mv aapt2 "$DIST/"
+echo "aapt2 built successfully → $DIST/aapt2"
